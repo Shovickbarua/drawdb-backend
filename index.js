@@ -3,7 +3,6 @@ import cors from "cors";
 import fs from "fs";
 import path from "path";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
 import process from "node:process";
 import dotenv from "dotenv";
 dotenv.config();
@@ -21,15 +20,26 @@ app.use(cors({
 app.use(express.json({ limit: "2mb" }));
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+const AUTH_MODE = process.env.AUTH_MODE || "static"; // "none" | "static" | "jwt"
+const API_TOKEN = process.env.API_TOKEN || "dev-token";
 const PORT = process.env.PORT || 5179;
 const diagramsDir = process.env.DIAGRAMS_DIR || path.join(process.cwd(), "public", "diagrams");
 if (!fs.existsSync(diagramsDir)) fs.mkdirSync(diagramsDir, { recursive: true });
 
-const USERS = [{ username: "admin", passwordHash: bcrypt.hashSync("admin", 10) }];
+let USERS = null;
+if (AUTH_MODE === "jwt") {
+  USERS = [{ username: "admin", password: process.env.ADMIN_PASSWORD || "admin" }];
+}
 
 function auth(req, res, next) {
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  if (AUTH_MODE === "none") return next();
+  const authHeader = req.headers.authorization || "";
+  if (AUTH_MODE === "static") {
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (token && token === API_TOKEN) return next();
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
   if (!token) return res.status(401).json({ error: "unauthorized" });
   try { jwt.verify(token, JWT_SECRET); next(); } catch { return res.status(401).json({ error: "invalid_token" }); }
 }
@@ -42,11 +52,11 @@ function safeFile(name) {
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.post("/api/login", (req, res) => {
+  if (AUTH_MODE === "none") return res.json({ token: null });
+  if (AUTH_MODE === "static") return res.json({ token: API_TOKEN });
   const { username, password } = req.body || {};
-  const user = USERS.find(u => u.username === username);
-  if (!user) return res.status(401).json({ error: "invalid_credentials" });
-  const ok = bcrypt.compareSync(password || "", user.passwordHash);
-  if (!ok) return res.status(401).json({ error: "invalid_credentials" });
+  const user = USERS && USERS.find(u => u.username === username);
+  if (!user || (password || "") !== user.password) return res.status(401).json({ error: "invalid_credentials" });
   const token = jwt.sign({ sub: username }, JWT_SECRET, { expiresIn: "7d" });
   res.json({ token });
 });
