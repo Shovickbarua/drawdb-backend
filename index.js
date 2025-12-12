@@ -8,7 +8,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-const allowedOrigins = (process.env.CORS_ALLOW_ORIGINS || "http://localhost:5173,http://localhost:5174, https://drawdb.shovickbarua.com")
+const allowedOrigins = (process.env.CORS_ALLOW_ORIGINS || "http://localhost:5173,http://localhost:5174, https://drawdb-diagram.shovickbarua.com")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
